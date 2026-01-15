@@ -1,0 +1,56 @@
+#app.py (Main File)
+import streamlit as st
+import pandas as pd
+import re
+import nltk
+from nltk.corpus import stopwords
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from resume_parser import extract_text_from_pdf, extract_text_from_docx
+
+nltk.download('stopwords')
+stop_words = set(stopwords.words('english'))
+
+def clean_text(text):
+    text = re.sub(r'[^a-zA-Z]', ' ', text)
+    text = text.lower()
+    words = text.split()
+    words = [w for w in words if w not in stop_words]
+    return ' '.join(words)
+
+st.title("AI Resume Screening System")
+
+job_description = st.text_area("Paste Job Description")
+uploaded_files = st.file_uploader(
+    "Upload Resumes (PDF/DOCX)",
+    type=["pdf", "docx"],
+    accept_multiple_files=True
+)
+
+if st.button("Analyze Resumes"):
+    resumes = []
+    names = []
+
+    for file in uploaded_files:
+        if file.name.endswith(".pdf"):
+            text = extract_text_from_pdf(file)
+        else:
+            text = extract_text_from_docx(file)
+
+        resumes.append(clean_text(text))
+        names.append(file.name)
+
+    jd_cleaned = clean_text(job_description)
+
+    documents = resumes + [jd_cleaned]
+    vectorizer = TfidfVectorizer()
+    tfidf_matrix = vectorizer.fit_transform(documents)
+
+    scores = cosine_similarity(tfidf_matrix[-1], tfidf_matrix[:-1])[0]
+
+    results = pd.DataFrame({
+        "Resume": names,
+        "Match Score (%)": scores * 100
+    }).sort_values(by="Match Score (%)", ascending=False)
+
+    st.dataframe(results)
